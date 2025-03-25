@@ -85,29 +85,29 @@ app.post("/auth/logout", async (req, res) => {
 });
 
 
-// 📌 Endpoint para obtener tasas de cambio desde la base de datos
 app.get("/exchange-rates", async (req, res) => {
     try {
-        const ratesQuery = await pool.query("SELECT * FROM exchange_rates");
-
-        if (ratesQuery.rows.length === 0) {
-            return res.status(404).json({ error: "No hay tasas de cambio disponibles." });
-        }
-
-        // 🔹 Convertir la lista de tasas a un objeto { USD: 1.09, MXN: 18.75, ... }
-        const rates = ratesQuery.rows.reduce((acc, row) => {
-            acc[row.currency] = row.rate;
-            return acc;
-        }, {});
-
-        res.json({ rates });
-
+      await updateExchangeRates(); // 🛠️ Intenta actualizar primero
+  
+      const ratesQuery = await pool.query("SELECT * FROM exchange_rates");
+  
+      if (ratesQuery.rows.length === 0) {
+        return res.status(404).json({ error: "No hay tasas de cambio disponibles." });
+      }
+  
+      const rates = ratesQuery.rows.reduce((acc, row) => {
+        acc[row.currency] = row.rate;
+        return acc;
+      }, {});
+  
+      res.json({ rates });
+  
     } catch (error) {
-        console.error("❌ Error al obtener tasas de cambio:", error);
-        res.status(500).json({ error: "Error al obtener tasas de cambio." });
+      console.error("❌ Error al obtener tasas de cambio:", error);
+      res.status(500).json({ error: "Error al obtener tasas de cambio." });
     }
-});
-
+  });
+  
 app.post("/exchange-rates", async (req, res) => {
     try {
         await updateExchangeRates();
