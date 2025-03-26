@@ -20,11 +20,11 @@ app.use(express.json());
 app.post("/visitors", async (req, res) => {
     const { ip, city, region, country, org, timestamp } = req.body;
     try {
-      await pool.query(
-        `INSERT INTO visitors (ip, city, region, country, org, timestamp)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [ip, city, region, country, org, timestamp]
-      );
+        await pool.query(
+            `INSERT INTO visitors (ip, city, region, country, org, timestamp, loc, date)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_DATE)`,
+            [ip, city, region, country, org, timestamp, loc]
+          );
       res.status(200).json({ message: "Visitor logged ✅" });
     } catch (err) {
       console.error("❌ Error al guardar visitante:", err);
@@ -34,20 +34,50 @@ app.post("/visitors", async (req, res) => {
   
   app.get("/visitors/stats", async (req, res) => {
     try {
-      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-      const result = await pool.query("SELECT * FROM visitors WHERE timestamp >= $1", [fiveMinutesAgo]);
+      const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+  
+      // 👤 Visitantes de hoy
+      const todayQuery = await pool.query(
+        "SELECT * FROM visitors WHERE date = $1",
+        [today]
+      );
+  
+      // 🌍 Historial de países y ciudades
+      const countryStats = await pool.query(
+        `SELECT country, city, COUNT(*) AS count
+         FROM visitors
+         GROUP BY country, city`
+      );
+  
+      // 📍 Todas las ubicaciones con coordenadas
+      const locQuery = await pool.query(
+        `SELECT city, country, loc FROM visitors WHERE loc IS NOT NULL`
+      );
   
       const countries = {};
-      result.rows.forEach((row) => {
-        countries[row.country] = (countries[row.country] || 0) + 1;
+      countryStats.rows.forEach((row) => {
+        const key = `${row.country} - ${row.city}`;
+        countries[key] = parseInt(row.count);
       });
   
-      res.json({ online: result.rowCount, countries });
+      const locations = locQuery.rows.map((row) => ({
+        city: row.city,
+        country: row.country,
+        loc: row.loc,
+      }));
+  
+      res.json({
+        todayUsers: todayQuery.rowCount,
+        countries,
+        locations
+      });
+  
     } catch (err) {
-      console.error("❌ Error al calcular estadísticas:", err);
+      console.error("❌ Error en /visitors/stats:", err);
       res.status(500).json({ error: "Error interno del servidor." });
     }
   });
+  
   
 const updateExchangeRates = async () => {
     const today = new Date().toISOString().split("T")[0]; // 📆 Fecha actual en formato YYYY-MM-DD
