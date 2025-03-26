@@ -18,19 +18,20 @@ app.use(cors());
 app.use(express.json());
 
 app.post("/visitors", async (req, res) => {
-    const { ip, city, region, country, org, timestamp } = req.body;
+    const { ip, city, region, country, org, timestamp, loc } = req.body; // 👈 aquí el fix
     try {
-        await pool.query(
-            `INSERT INTO visitors (ip, city, region, country, org, timestamp, loc, date)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_DATE)`,
-            [ip, city, region, country, org, timestamp, loc]
-          );
+      await pool.query(
+        `INSERT INTO visitors (ip, city, region, country, org, timestamp, loc, date)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_DATE)`,
+        [ip, city, region, country, org, timestamp, loc]
+      );
       res.status(200).json({ message: "Visitor logged ✅" });
     } catch (err) {
       console.error("❌ Error al guardar visitante:", err);
       res.status(500).json({ error: "Error interno del servidor." });
     }
   });
+  
   
   app.get("/visitors/stats", async (req, res) => {
     try {
@@ -56,7 +57,7 @@ app.post("/visitors", async (req, res) => {
         WHERE loc IS NOT NULL
         GROUP BY city, country, loc
       `);
-      
+
       const countries = {};
       countryStats.rows.forEach((row) => {
         const key = `${row.country} - ${row.city}`;
