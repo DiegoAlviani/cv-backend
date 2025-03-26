@@ -17,8 +17,38 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey);
 app.use(cors());
 app.use(express.json());
 
-
-
+app.post("/visitors", async (req, res) => {
+    const { ip, city, region, country, org, timestamp } = req.body;
+    try {
+      await pool.query(
+        `INSERT INTO visitors (ip, city, region, country, org, timestamp)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [ip, city, region, country, org, timestamp]
+      );
+      res.status(200).json({ message: "Visitor logged ✅" });
+    } catch (err) {
+      console.error("❌ Error al guardar visitante:", err);
+      res.status(500).json({ error: "Error interno del servidor." });
+    }
+  });
+  
+  app.get("/visitors/stats", async (req, res) => {
+    try {
+      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+      const result = await pool.query("SELECT * FROM visitors WHERE timestamp >= $1", [fiveMinutesAgo]);
+  
+      const countries = {};
+      result.rows.forEach((row) => {
+        countries[row.country] = (countries[row.country] || 0) + 1;
+      });
+  
+      res.json({ online: result.rowCount, countries });
+    } catch (err) {
+      console.error("❌ Error al calcular estadísticas:", err);
+      res.status(500).json({ error: "Error interno del servidor." });
+    }
+  });
+  
 const updateExchangeRates = async () => {
     const today = new Date().toISOString().split("T")[0]; // 📆 Fecha actual en formato YYYY-MM-DD
 
