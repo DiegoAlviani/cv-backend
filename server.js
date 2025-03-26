@@ -50,10 +50,13 @@ app.post("/visitors", async (req, res) => {
       );
   
       // 📍 Todas las ubicaciones con coordenadas
-      const locQuery = await pool.query(
-        `SELECT city, country, loc FROM visitors WHERE loc IS NOT NULL`
-      );
-  
+      const locQuery = await pool.query(`
+        SELECT city, country, loc, COUNT(*) AS count
+        FROM visitors
+        WHERE loc IS NOT NULL
+        GROUP BY city, country, loc
+      `);
+      
       const countries = {};
       countryStats.rows.forEach((row) => {
         const key = `${row.country} - ${row.city}`;
