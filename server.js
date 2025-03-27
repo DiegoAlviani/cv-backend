@@ -78,8 +78,15 @@ app.post("/visitors", async (req, res) => {
       res.json({
         todayUsers: todayQuery.rowCount,
         countries,
-        locations
+        locations: locQuery.rows.map((row) => ({
+          city: row.city,
+          country: row.country,
+          loc: row.loc,
+          org: row.org,
+          count: parseInt(row.count)
+        }))
       });
+      
   
     } catch (err) {
       console.error("❌ Error en /visitors/stats:", err);
