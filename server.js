@@ -40,13 +40,22 @@ app.post("/visitors", async (req, res) => {
   
   app.get("/visitors/stats", async (req, res) => {
     try {
-      const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
-  
-      // 👤 Visitantes de hoy
-      const todayQuery = await pool.query(
-        "SELECT * FROM visitors WHERE date = $1",
-        [today]
-      );
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, "0");
+        const today = now.toISOString().split("T")[0];
+
+      // 🟢 Visitantes del mes actual
+        const monthQuery = await pool.query(
+            `SELECT * FROM visitors WHERE TO_CHAR(date, 'YYYY-MM') = $1`,
+            [`${year}-${month}`]
+        );
+        
+        // 🔵 Visitantes de hoy
+        const todayQuery = await pool.query(
+            `SELECT * FROM visitors WHERE date = $1`,
+            [today]
+        );
   
       // 🌍 Historial de países y ciudades
       const countryStats = await pool.query(
@@ -76,6 +85,7 @@ app.post("/visitors", async (req, res) => {
       }));
   
       res.json({
+        monthlyUsers: monthQuery.rowCount,
         todayUsers: todayQuery.rowCount,
         countries,
         locations: locQuery.rows.map((row) => ({
