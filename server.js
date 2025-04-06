@@ -1141,80 +1141,162 @@ app.delete("/finance/:month/:year/expenses/:id", async (req, res) => {
 });
 
 
-/// 🔹 Endpoint para pasar gastos a un nuevo mes (con migración automática)
+// 🔄 Endpoint para migrar gastos pendientes y añadir gastos recurrentes
 app.post("/finance/:month/:year/migrate-expenses", async (req, res) => {
     const { month, year } = req.params;
-
+  
     try {
-        // 📌 Convertir el mes a número (para que coincida con la base de datos)
         const monthMapping = {
-            // 🔹 Español
-            enero: "01", febrero: "02",  abril: "04",
-            mayo: "05", junio: "06", julio: "07", 
-            septiembre: "09", octubre: "10", noviembre: "11", 
-
-            // 🔹 Italiano
-            gennaio: "01", febbraio: "02", marzo: "03", aprile: "04",
-            maggio: "05", giugno: "06", luglio: "07", agosto: "08",
-            settembre: "09", ottobre: "10", novembre: "11", dicembre: "12",
-
-            // 🔹 Inglés
-            january: "01", february: "02", march: "03", april: "04",
-            may: "05", june: "06", july: "07", august: "08",
-            september: "09", october: "10", november: "11", december: "12"
-        };
-
-        const currentMonthNum = monthMapping[month.toLowerCase()];
-        if (!currentMonthNum) {
-            return res.status(400).json({ error: "❌ Mes inválido en la solicitud." });
-        }
-
-        // 📌 Obtener el mes anterior en formato correcto (YYYY-MM)
-        let prevYear = parseInt(year);
-        let prevMonthNum = parseInt(currentMonthNum) - 1;
-
-        if (prevMonthNum === 0) {
-            prevMonthNum = 12;
-            prevYear -= 1; // 🔹 Si el mes anterior es enero, retrocede un año
-        }
-
-        const prevMonthStr = prevMonthNum.toString().padStart(2, "0"); // 🔹 Convertir a "02", "03", etc.
-        const prevMonthYearKey = `${prevYear}-${prevMonthStr}`;
-        const currentMonthYearKey = `${year}-${currentMonthNum}`;
-
-        console.log(`🔍 Buscando gastos pendientes en ${prevMonthYearKey} para migrar a ${currentMonthYearKey}`);
-
-        // 🔹 Obtener gastos pendientes del mes anterior
-        const pendingExpenses = await pool.query(
-            "SELECT * FROM expenses WHERE month_year = $1 AND LOWER(status) = 'pending'",
-            [prevMonthYearKey]
+            // Español / Italiano (coinciden)
+            enero: "01",      gennaio: "01",
+            febrero: "02",    febbraio: "02",
+            marzo: "03",
+            abril: "04",      aprile: "04",
+            mayo: "05",       maggio: "05",
+            junio: "06",      giugno: "06",
+            julio: "07",      luglio: "07",
+            agosto: "08",
+            septiembre: "09", settembre: "09",
+            octubre: "10",    ottobre: "10",
+            noviembre: "11",  novembre: "11",
+            diciembre: "12",  dicembre: "12",
+          
+            // Inglés
+            january: "01",
+            february: "02",
+            march: "03",
+            april: "04",
+            may: "05",
+            june: "06",
+            july: "07",
+            august: "08",
+            september: "09",
+            october: "10",
+            november: "11",
+            december: "12",
+          };          
+  
+      const currentMonthNum = monthMapping[month.toLowerCase()];
+      if (!currentMonthNum) return res.status(400).json({ error: "❌ Mes inválido." });
+  
+      // Preparar mes actual y anterior
+      let currentMonth = parseInt(currentMonthNum);
+      let currentYear = parseInt(year);
+      let prevMonth = currentMonth - 1;
+      let prevYear = currentYear;
+  
+      if (prevMonth === 0) {
+        prevMonth = 12;
+        prevYear -= 1;
+      }
+  
+      const prevMonthKey = `${prevYear}-${String(prevMonth).padStart(2, "0")}`;
+      const currentMonthKey = `${currentYear}-${String(currentMonth).padStart(2, "0")}`;
+  
+      // 🔹 1. Migrar gastos pendientes del mes anterior
+      const pendingExpenses = await pool.query(
+        "SELECT * FROM expenses WHERE month_year = $1 AND LOWER(status) = 'pending'",
+        [prevMonthKey]
+      );
+  
+      for (const expense of pendingExpenses.rows) {
+        await pool.query(
+          `UPDATE expenses
+           SET month_year = $1
+           WHERE id = $2`,
+          [currentMonthKey, expense.id]
         );
-
-        if (pendingExpenses.rows.length === 0) {
-            console.log(`📌 No hay gastos pendientes para trasladar desde ${prevMonthYearKey}.`);
-            return res.status(200).json({ message: "✅ No hay gastos pendientes para trasladar." });
+      }
+  
+      // 🔹 2. Agregar gastos recurrentes activos si no existen aún
+      const recurrentes = await pool.query("SELECT * FROM recurring_expenses WHERE active = true");
+  
+      for (const r of recurrentes.rows) {
+        const exists = await pool.query(
+          "SELECT 1 FROM expenses WHERE title = $1 AND month_year = $2",
+          [r.title, currentMonthKey]
+        );
+  
+        if (exists.rowCount === 0) {
+          await pool.query(
+            `INSERT INTO expenses (title, amount, category, currency, month_year, status)
+             VALUES ($1, $2, $3, $4, $5, 'pending')`,
+            [r.title, r.amount, r.category, r.currency, currentMonthKey]
+          );
         }
-
-        // 🔹 Migrar los gastos al nuevo mes
-        for (const expense of pendingExpenses.rows) {
-            await pool.query(
-                `UPDATE expenses
-                 SET month_year = $1
-                 WHERE month_year = $2 AND LOWER(status) = 'pending'`,
-                [currentMonthYearKey, prevMonthYearKey]
-              );
-        }
-
-        console.log(`✅ Gastos migrados de ${prevMonthYearKey} a ${currentMonthYearKey}.`);
-
-        res.json({ message: `✅ Gastos pendientes trasladados de ${prevMonthYearKey} a ${currentMonthYearKey}.` });
+      }
+  
+      return res.json({
+        message: `✅ Migración completada a ${currentMonthKey}. Pendientes migrados y gastos recurrentes añadidos.`,
+      });
+  
     } catch (error) {
-        console.error("❌ Error al migrar los gastos:", error);
-        res.status(500).json({ error: "❌ Error al trasladar los gastos en la base de datos." });
+      console.error("❌ Error al migrar gastos:", error);
+      res.status(500).json({ error: "❌ Error al migrar gastos." });
     }
-});
+  });
+  
 
+// Obtener todos los gastos recurrentes
+app.get("/api/recurring-expenses", async (req, res) => {
+    try {
+      const { data, error } = await supabase.from("recurring_expenses").select("*").order("id", { ascending: true });
+      if (error) throw error;
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  
+  // Crear un nuevo gasto recurrente
+  app.post("/api/recurring-expenses", async (req, res) => {
+    try {
+      const { title, amount, category, currency, due_day, active } = req.body;
+      const { data, error } = await supabase.from("recurring_expenses").insert([
+        { title, amount, category, currency, due_day, active }
+      ]);
+      if (error) throw error;
+      res.status(201).json(data);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
 
+// Actualizar un gasto recurrente
+app.put("/api/recurring-expenses/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { title, amount, category, currency, due_day, active } = req.body;
+  
+      const { data, error } = await supabase
+        .from("recurring_expenses")
+        .update({ title, amount, category, currency, due_day, active })
+        .eq("id", id);
+  
+      if (error) throw error;
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  
+  // Eliminar un gasto recurrente
+  app.delete("/api/recurring-expenses/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+  
+      const { data, error } = await supabase
+        .from("recurring_expenses")
+        .delete()
+        .eq("id", id);
+  
+      if (error) throw error;
+      res.json(data);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  
 
 // Ruta para probar la conexión con PostgreSQL
 app.get("/test-db", async (req, res) => {
