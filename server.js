@@ -1306,7 +1306,7 @@ app.post("/finance/migrate-recurring-expenses", async (req, res) => {
       }
 
       const existing = await pool.query(
-        `SELECT * FROM expenses WHERE title = $1 AND month_year = $2`,
+        `SELECT * FROM expenses WHERE name = $1 AND month_year = $2`,
         [item.title, monthYearKey]
       );
 
