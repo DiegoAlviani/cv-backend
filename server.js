@@ -1273,69 +1273,71 @@ app.put("/api/recurring-expenses/:id", async (req, res) => {
       res.status(500).json({ error: err.message });
     }
   });
-  
+
  /// 🔹 Endpoint para pasar gastos recurrentes a un nuevo mes (con migración automática) 
-  app.post("/finance/migrate-recurring-expenses", async (req, res) => {
-    try {
-      // 📅 Fecha actual
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = String(now.getMonth() + 1).padStart(2, "0");
-      const monthYearKey = `${year}-${month}`;
-      const today = now.toISOString().split("T")[0];
-  
-      console.log(`🔄 Verificando recurrentes para el mes: ${monthYearKey}`);
-  
-      // 📥 Obtener gastos recurrentes activos
-      const { data: recurring, error } = await supabase
-        .from("recurring_expenses")
-        .select("*")
-        .eq("active", true);
-  
-      if (error) throw error;
-  
-      let inserted = 0;
-  
-      for (const item of recurring) {
-        // 🔍 Verifica si ya existe en expenses un gasto con mismo título y mes
-        const existing = await pool.query(
-          `SELECT * FROM expenses 
-           WHERE title = $1 AND month_year = $2`,
-          [item.title, monthYearKey]
-        );
-  
-        if (existing.rows.length === 0) {
-          // 📝 Insertar el gasto recurrente como nuevo gasto del mes
-          await pool.query(
-            `INSERT INTO expenses 
-              (title, amount, category, currency, date, status, month_year) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-            [
-              item.title,
-              item.amount,
-              item.category,
-              item.currency,
-              today,
-              "pending",      // Todos los recurrentes inician como pendientes
-              monthYearKey,
-            ]
-          );
-          inserted++;
-          console.log(`✅ Insertado: ${item.title}`);
-        } else {
-          console.log(`⏭️ Ya existe: ${item.title}`);
-        }
-      }
-  
-      res.json({
-        message: `🧾 Gastos recurrentes procesados.`,
-        inserted,
-      });
-    } catch (err) {
-      console.error("❌ Error al migrar gastos recurrentes:", err.message);
-      res.status(500).json({ error: "❌ Error interno al migrar gastos recurrentes." });
+app.post("/finance/migrate-recurring-expenses", async (req, res) => {
+  try {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const monthYearKey = `${year}-${month}`;
+    const today = now.toISOString().split("T")[0];
+
+    console.log(`🔄 Verificando recurrentes para el mes: ${monthYearKey}`);
+
+    const { data: recurring, error } = await supabase
+      .from("recurring_expenses")
+      .select("*")
+      .eq("active", true);
+
+    if (error) {
+      console.error("❌ Error en Supabase:", error);
+      throw error;
     }
-  });
+
+    console.log("📦 Recurrentes recibidos:", recurring);
+
+    let inserted = 0;
+
+    for (const item of recurring) {
+      if (!item.title || !item.amount || !item.category || !item.currency) {
+        console.log("⚠️ Gasto recurrente con datos incompletos:", item);
+        continue;
+      }
+
+      const existing = await pool.query(
+        `SELECT * FROM expenses WHERE title = $1 AND month_year = $2`,
+        [item.title, monthYearKey]
+      );
+
+      if (existing.rows.length === 0) {
+        await pool.query(
+          `INSERT INTO expenses (title, amount, category, currency, date, status, month_year) 
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            item.title,
+            item.amount,
+            item.category,
+            item.currency,
+            today,
+            "pending",
+            monthYearKey,
+          ]
+        );
+        inserted++;
+        console.log(`✅ Insertado: ${item.title}`);
+      } else {
+        console.log(`⏭️ Ya existe: ${item.title}`);
+      }
+    }
+
+    res.json({ message: "🧾 Migración completa", inserted });
+  } catch (err) {
+    console.error("❌ Error al migrar gastos recurrentes:", err.message);
+    res.status(500).json({ error: "❌ Error interno al migrar gastos recurrentes." });
+  }
+});
+
   
 // Ruta para probar la conexión con PostgreSQL
 app.get("/test-db", async (req, res) => {
