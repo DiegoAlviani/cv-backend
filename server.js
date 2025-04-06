@@ -1198,10 +1198,11 @@ app.post("/finance/:month/:year/migrate-expenses", async (req, res) => {
         // 🔹 Migrar los gastos al nuevo mes
         for (const expense of pendingExpenses.rows) {
             await pool.query(
-                `INSERT INTO expenses (month_year, name, category, amount, currency, status, date_added)
-                 VALUES ($1, $2, $3, $4, $5, 'pending', CURRENT_DATE)`,
-                [currentMonthYearKey, expense.name, expense.category, expense.amount, expense.currency]
-            );
+                `UPDATE expenses
+                 SET month_year = $1
+                 WHERE month_year = $2 AND LOWER(status) = 'pending'`,
+                [currentMonthYearKey, prevMonthYearKey]
+              );
         }
 
         console.log(`✅ Gastos migrados de ${prevMonthYearKey} a ${currentMonthYearKey}.`);
