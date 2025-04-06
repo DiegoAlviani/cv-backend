@@ -1312,18 +1312,19 @@ app.post("/finance/migrate-recurring-expenses", async (req, res) => {
 
       if (existing.rows.length === 0) {
         await pool.query(
-          `INSERT INTO expenses (title, amount, category, currency, date, status, month_year) 
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [
-            item.title,
-            item.amount,
-            item.category,
-            item.currency,
-            today,
-            "pending",
-            monthYearKey,
-          ]
-        );
+            `INSERT INTO expenses 
+             (name, amount, category, currency, date, status, month_year) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [
+              item.title,        // 🔹 Este valor sigue viniendo como "title" desde recurrentes
+              item.amount,
+              item.category,
+              item.currency,
+              today,
+              "pending",
+              monthYearKey,
+            ]
+          );
         inserted++;
         console.log(`✅ Insertado: ${item.title}`);
       } else {
